@@ -1,6 +1,6 @@
 FROM python:3.9-slim-bullseye 
 
-RUN apt-get update && apt-get install -y build-essential python-dev nginx tini supervisor
+RUN apt-get update && apt-get install -y build-essential python-dev nginx supervisor curl
 
 # spams install error with 1.22.x
 RUN pip --no-cache-dir install --upgrade pip && \
@@ -12,9 +12,10 @@ RUN pip install uwsgi
 
 COPY app.py /app.py
 
+HEALTHCHECK --interval=30s --start-period=10s CMD curl --fail http://localhost:6077/healthcheck || exit 1
+
 COPY uwsgi.ini /etc/uwsgi/
 COPY nginx.conf /etc/nginx/ 
 COPY supervisord.conf /etc/
-# COPY timeout.conf /etc/nginx/conf.d/timeout.conf
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf"]

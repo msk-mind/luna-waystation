@@ -1,5 +1,4 @@
-from flask import Flask, request, jsonify
-import click
+from flask import Flask, request
 
 import os, logging
 
@@ -8,6 +7,8 @@ import threading
 
 from logging.config import dictConfig
 
+from urllib.parse import urlparse
+from pathlib import Path
 
 dictConfig({
     'version': 1,
@@ -30,8 +31,6 @@ app = Flask(__name__)
 logger = logging.getLogger('waystation')
 logger.info("Starting luna waystation...")
 
-from urllib.parse import urlparse
-
 s3_access_key = os.environ['S3_ACCESS_KEY']
 s3_secret_key = os.environ['S3_SECRET_KEY']
 s3_root_url   = os.environ['S3_ROOT_URL']
@@ -41,9 +40,10 @@ s3_scheme = url_result.scheme
 s3_endpoint = url_result.netloc
 s3_host = url_result.hostname
 
-from pathlib import Path
 root_data_dir = str(Path(url_result.path).relative_to('/'))
 s3_bucket = root_data_dir.split('/')[0]
+
+logger.info(f"Writing to: {s3_endpoint}")
 
 logger.info ((s3_bucket, root_data_dir))
 if s3_scheme == 'https':
@@ -55,31 +55,32 @@ lock = threading.Lock()
 # THIS HAS TO COME AFTER SSL THING
 import pyarrow.parquet as pq
 from pyarrow import fs, Table
-
 import s3fs
-s3 = s3fs.S3FileSystem(
-   key=s3_access_key,
-   secret=s3_secret_key,
-   client_kwargs={
-      'endpoint_url': f'{s3_scheme}://{s3_endpoint}',
-      'verify':False
-   }
-)
-try:
-    s3.mkdir(s3_bucket)
-except FileExistsError as exc:
-    logger.info(f"Bucket {s3_bucket} already exists!")
 
-logger.info(f"Writing to: {s3_endpoint}")
-minio = fs.S3FileSystem(scheme=s3_scheme, access_key=s3_access_key, secret_key=s3_secret_key, endpoint_override=s3_endpoint)
+def ensure_bucket(s3_bucket):
+    s3 = s3fs.S3FileSystem(
+    key=s3_access_key,
+    secret=s3_secret_key,
+    client_kwargs={
+        'endpoint_url': f'{s3_scheme}://{s3_endpoint}',
+        'verify':False
+    }
+    )
+    try:
+        s3.mkdir(s3_bucket)
+    except FileExistsError as exc:
+        logger.info(f"Bucket {s3_bucket} already exists!")
 
 @app.route('/')
-def index():
-    return "Hello from Luna Waystation"
+def index(): return "Hello from Luna Waystation"
 
+@app.route('/healthcheck')
+def healthcheck(): return {'running':True}
 
 @app.route('/datasets/views/<string:dsid>', methods=['GET'])
 def get_dataset_view(dsid):
+    minio = fs.S3FileSystem(scheme=s3_scheme, access_key=s3_access_key, secret_key=s3_secret_key, endpoint_override=s3_endpoint)
+
     ds_dir = os.path.join(root_data_dir, dsid, 'data.parquet')
     df = pq.read_table(ds_dir, filesystem=minio).to_pandas()
     return f"{df}\n"
@@ -87,9 +88,13 @@ def get_dataset_view(dsid):
 
 @app.route('/datasets/<string:dsid>/segments/<string:sid>', methods=['POST'])
 def post_dataset_segment(dsid, sid):
+    minio = fs.S3FileSystem(scheme=s3_scheme, access_key=s3_access_key, secret_key=s3_secret_key, endpoint_override=s3_endpoint)
+
     segment = request.files['segment']
     data = pd.read_csv(segment)
     data['SEGMENT_ID'] = sid
+
+    ensure_bucket(s3_bucket)
 
     data = data.set_index('SEGMENT_ID')
     logger.info (f"Recieved {len(data)} rows of data for dataset={dsid}, segment={sid}")
@@ -110,10 +115,9 @@ def post_dataset_segment(dsid, sid):
 
     return {'status':'success', 'dsid':dsid, 'sid':sid, 'rows_written': len(data)}
 
-@click.command()
 def main():
 
-    app.run(host='0.0.0.0',port=6077, threaded=True, debug=False)
+    app.run(host='0.0.0.0',port=6077, threaded=True, debug=True)
 
 if __name__ == '__main__':
     main()
