@@ -20,7 +20,7 @@ dictConfig({
         'formatter': 'default'
     }},
     'root': {
-        'level': 'DEBUG',
+        'level': 'INFO',
         'handlers': ['wsgi']
     }
 })
@@ -30,18 +30,25 @@ app = Flask(__name__)
 logger = logging.getLogger('waystation')
 logger.info("Starting luna waystation...")
 
-root_data_dir = 'staging/waystation/tables'
+from urllib.parse import urlparse
 
 s3_access_key = os.environ['S3_ACCESS_KEY']
 s3_secret_key = os.environ['S3_SECRET_KEY']
-s3_endpoint   = os.environ['S3_ENDPOINT']
-s3_host       = s3_endpoint.split(':')[0]
+s3_root_url   = os.environ['S3_ROOT_URL']
 
-os.system(f"echo | openssl s_client -servername {s3_host} -connect {s3_endpoint} |  sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /certificate.crt")
+url_result = urlparse(s3_root_url)
+s3_scheme = url_result.scheme
+s3_endpoint = url_result.netloc
+s3_host = url_result.hostname
 
-os.system("cat /certificate.crt")
+from pathlib import Path
+root_data_dir = str(Path(url_result.path).relative_to('/'))
+s3_bucket = root_data_dir.split('/')[0]
 
-os.environ['SSL_CERT_FILE'] = '/certificate.crt'
+logger.info ((s3_bucket, root_data_dir))
+if s3_scheme == 'https':
+    os.system(f"echo | openssl s_client -servername {s3_host} -connect {s3_endpoint} |  sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /certificate.crt")
+    os.environ['SSL_CERT_FILE'] = '/certificate.crt'
 
 lock = threading.Lock()
 
@@ -49,10 +56,22 @@ lock = threading.Lock()
 import pyarrow.parquet as pq
 from pyarrow import fs, Table
 
-logger.info(f"Writing to: {s3_endpoint}")
-minio = fs.S3FileSystem(scheme="https", access_key=s3_access_key, secret_key=s3_secret_key, endpoint_override=s3_endpoint)
+import s3fs
+s3 = s3fs.S3FileSystem(
+   key=s3_access_key,
+   secret=s3_secret_key,
+   client_kwargs={
+      'endpoint_url': f'{s3_scheme}://{s3_endpoint}',
+      'verify':False
+   }
+)
+try:
+    s3.mkdir(s3_bucket)
+except FileExistsError as exc:
+    logger.info(f"Bucket {s3_bucket} already exists!")
 
-logger.info(minio.get_file_info("staging"))
+logger.info(f"Writing to: {s3_endpoint}")
+minio = fs.S3FileSystem(scheme=s3_scheme, access_key=s3_access_key, secret_key=s3_secret_key, endpoint_override=s3_endpoint)
 
 @app.route('/')
 def index():
