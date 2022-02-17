@@ -12,7 +12,7 @@ RUN pip install uwsgi
 
 COPY app.py /app.py
 
-HEALTHCHECK --interval=30s --start-period=10s CMD curl --fail http://localhost:6077/healthcheck || exit 1
+HEALTHCHECK --interval=30s CMD curl --fail http://localhost:6077/healthcheck || exit 1
 
 COPY uwsgi.ini /etc/uwsgi/
 COPY nginx.conf /etc/nginx/ 
