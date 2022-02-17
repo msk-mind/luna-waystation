@@ -82,7 +82,7 @@ def index():
 def get_dataset_view(dsid):
     ds_dir = os.path.join(root_data_dir, dsid, 'data.parquet')
     df = pq.read_table(ds_dir, filesystem=minio).to_pandas()
-    return f"{df}"
+    return f"{df}\n"
 
 
 @app.route('/datasets/<string:dsid>/segments/<string:sid>', methods=['POST'])
