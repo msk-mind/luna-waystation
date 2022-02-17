@@ -78,6 +78,13 @@ def index():
     return "Hello from Luna Waystation"
 
 
+@app.route('/datasets/views/<string:dsid>', methods=['GET'])
+def get_dataset_view(dsid):
+    ds_dir = os.path.join(root_data_dir, dsid, 'data.parquet')
+    df = pq.read_table(ds_dir, filesystem=minio).to_pandas()
+    return f"{df}"
+
+
 @app.route('/datasets/<string:dsid>/segments/<string:sid>', methods=['POST'])
 def post_dataset_segment(dsid, sid):
     segment = request.files['segment']
