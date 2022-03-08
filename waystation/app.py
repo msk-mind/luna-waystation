@@ -1,9 +1,10 @@
-from flask import Flask, request
+from flask import Flask, request 
 
 import os, logging
 
 import pandas as pd
 import threading
+import json
 
 from logging.config import dictConfig
 
@@ -56,6 +57,7 @@ lock = threading.Lock()
 import pyarrow.parquet as pq
 from pyarrow import fs, Table
 import s3fs
+from pathlib import Path
 
 def ensure_bucket(s3_bucket):
     s3 = s3fs.S3FileSystem(
@@ -90,10 +92,36 @@ def get_dataset_view(dsid):
 def post_dataset_segment(dsid, sid):
     minio = fs.S3FileSystem(scheme=s3_scheme, access_key=s3_access_key, secret_key=s3_secret_key, endpoint_override=s3_endpoint)
 
-    segment = request.files['segment']
-    data = pd.read_csv(segment)
-    data['SEGMENT_ID'] = sid
+    file_segment = request.files['segment_data']
+    segment_keys = request.form.get('segment_keys', None)
+    
+    logger.info(segment_keys)
+ 
+    file_type = Path(file_segment.filename).suffix 
 
+    if file_type=='.parquet':
+        data = pd.read_parquet(file_segment).reset_index()
+    elif file_type=='.csv':
+        data = pd.read_csv(file_segment).reset_index()
+    else:
+        logger.error(f"Invalid filetype: {file_type}")
+
+    data = data.drop(columns='index', errors='ignore')
+
+    data['SEGMENT_ID'] = sid
+ 
+    re_indexors = ['SEGMENT_ID']
+    
+    if segment_keys is not None:
+        segment_keys = json.loads(segment_keys)
+        for key, value in segment_keys.items():
+            data.loc[:, key] = value
+            re_indexors.append(key)
+ 
+    data = data.set_index(re_indexors).reset_index()
+    
+    print (data)
+ 
     ensure_bucket(s3_bucket)
 
     data = data.set_index('SEGMENT_ID')
