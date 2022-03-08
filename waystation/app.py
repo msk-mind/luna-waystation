@@ -118,10 +118,8 @@ def post_dataset_segment(dsid, sid):
             data.loc[:, key] = value
             re_indexors.append(key)
  
-    data = data.set_index(re_indexors).reset_index()
+    data = data.set_index(re_indexors).reset_index() # a trick to move columns to the left
     
-    print (data)
- 
     ensure_bucket(s3_bucket)
 
     data = data.set_index('SEGMENT_ID')
