@@ -90,6 +90,8 @@ def get_dataset_view(dsid):
 
 @app.route('/datasets/<string:dsid>/segments/<string:sid>', methods=['POST'])
 def post_dataset_segment(dsid, sid):
+    logger.info(f"Recieved dataset request dsid={dsid}, sid={sid}")
+    
     minio = fs.S3FileSystem(scheme=s3_scheme, access_key=s3_access_key, secret_key=s3_secret_key, endpoint_override=s3_endpoint)
 
     file_segment = request.files['segment_data']
