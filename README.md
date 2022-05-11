@@ -13,3 +13,17 @@ docker run -d -p 6077:6077 \
   -e S3_ROOT_URL=http://localhost:9000/datasets 
   mskminddev/luna-waystation:latest
 ```
+
+# Post dataset segment
+
+```
+curl --location --request POST 'localhost:6077/datasets/MY_DATASET/segments/S-0001-xA2bc98' \
+--form 'segment_data=@"/data/S-0001-data.parquet"' \
+--form 'segment_keys="{\"data_id\":\"S-0001\", \"hash_id\":\"xA2bc98\"}";type=application/json'
+```
+
+This will add the tabular data in S-0001-data.parquet as a segment within the dataset `MY_DATASET`, such that it can be retrived by running:
+
+```
+SELECT * FROM MY_DATASET WHERE SEGMENT_ID = 'S-0001-xA2bc98`
+```
